@@ -326,6 +326,35 @@ class UMAP():
         )
         return response['embeddings']
     
+    def check_document_type_match(self, row_id, question_id):
+        row_type = self.get_row_type(row_id)
+        question_type = self.get_question_type(question_id)
+        return row_type == question_type
+
+    def get_row_type(self, id):
+        if 0 <= id <= 67:
+            return 'leopard'
+        elif 68 <= id <= 132:
+            return 'penguin'
+        elif 133 <= id <= 213:
+            return 'polar bear'
+        elif 214 <= id <= 279:
+            return 'beetle'
+        else:
+            return 'unknown'
+
+    def get_question_type(self, id):
+        if 0 <= id <= 31:
+            return 'leopard'
+        elif 32 <= id <= 62:
+            return 'penguin'
+        elif 63 <= id <= 92:
+            return 'polar bear'
+        elif 93 <= id <= 122:
+            return 'beetle'
+        else:
+            return 'unknown'
+
     def get_correct_chunk_id(self, annotated_chunk):
         ids = [str(i) for i in range(self.collection.count())]
         response = self.collection.get(
@@ -346,6 +375,33 @@ class UMAP():
             )
         return results['documents']
     
+    def target_document_accuracy(self):
+        document_types = ['leopard', 'penguin', 'polar bear', 'beetle', 'unknown']
+        accuracy_scores = {doc_type: {'correct': 0, 'total': 0} for doc_type in document_types}
+
+        for i, row in self.df.iterrows():
+            question_id = i
+            doc_type = self.get_question_type(question_id)
+
+            top_n_chunk_ids_str = row['top_n_chunk_id']
+            document_ids = [int(i) for i in ast.literal_eval(top_n_chunk_ids_str)]
+
+            for document_id in document_ids:
+                is_match = self.check_document_type_match(document_id, question_id)
+
+                accuracy_scores[doc_type]['total'] += 1
+                if is_match:
+                    accuracy_scores[doc_type]['correct'] += 1
+
+        # Calculate accuracy percentages
+        for doc_type in accuracy_scores:
+            total = accuracy_scores[doc_type]['total']
+            correct = accuracy_scores[doc_type]['correct']
+            accuracy = (correct / total) * 100 if total > 0 else 0
+            accuracy_scores[doc_type]['accuracy'] = round(accuracy, 2)
+
+        return accuracy_scores
+    
     def cluster(self, questions_id_list):
         
         # Find optimal n_neighbors
@@ -355,14 +411,30 @@ class UMAP():
         print(f'OPTIMAL neighbors for {self.df_path} optimal n neighbors: {optimal_n_neighbors}')
 
         # Apply UMAP with optimal n_neighbors
+        vectors = self.get_all_vectors()
+  
         reducer = umap.UMAP(n_neighbors=optimal_n_neighbors, random_state=42)
-        umap_embeds = reducer.fit_transform(self.get_all_vectors())
+        umap_embeds = reducer.fit_transform(vectors)
 
         fig, axs = plt.subplots(3, 1, figsize=(4.5, 10))  # Increased the figure size
         # Add the title to the main plot
         s = ', '.join(map(str, questions_id_list))
         title = f'{self.model_name} {self.data_type}, questions_ids: {s}'
         fig.suptitle(title, fontsize=16)
+
+        # Document type colors
+        colors = {
+            'leopard': 'yellow',
+            'penguin': 'black',
+            'polar bear': 'grey',
+            'beetle': 'orange'
+        }
+
+        # Create a color map for the entire dataset
+        color_map = []
+        for i in range(len(vectors)):
+            doc_type = self.id_document_type(i)
+            color_map.append(colors[doc_type])
 
         # Plot the provided questions
         for i, question_id in enumerate(questions_id_list):
@@ -373,8 +445,8 @@ class UMAP():
             correct_id = self.get_correct_chunk_id(row['Annotated Chunk'])
             ax = axs[i]
 
-            # Plot all points in grey
-            ax.scatter(umap_embeds[:, 0], umap_embeds[:, 1], c='grey', s=3)
+            # Plot all points with colors based on document type
+            scatter = ax.scatter(umap_embeds[:, 0], umap_embeds[:, 1], c=color_map, s=3)
 
             # Plot top_n_chunks in blue
             for id in questions_ids:
@@ -389,9 +461,21 @@ class UMAP():
             # Set the title of the subplot to the question with line breaks
             ax.set_title(question)
 
+        # Create a legend
+        handles = [
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='yellow', markersize=10, label='Leopard'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='black', markersize=10, label='Penguin'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='grey', markersize=10, label='Polar Bear'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='orange', markersize=10, label='Beetle'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=10, label='Top N Chunks'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10, label='Correct Chunk (In Top N)'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='Correct Chunk (Not In Top N)')
+        ]
+        fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3)
+
         if not os.path.exists('umaps'):
             os.makedirs('umaps')
-        name = f'umaps/{self.model_name}_{self.data_type}'
+        name = f'umaps/{self.model_name}_{self.data_type}_color'
         plt.savefig(name)
 
         # Show the plot
