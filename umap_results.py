@@ -29,6 +29,6 @@ umapper_mistral_multi_doc = UMAP(
     RAG_client=RAG_mini_multi_doc
 )
 question_id_list = [3, 19, 20]
-
+umapper_mistral_multi_doc.cluster(question_id_list)
 z = umapper_mistral_multi_doc.target_document_accuracy()
-print(z)
+#print(z)

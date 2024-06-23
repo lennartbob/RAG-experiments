@@ -424,16 +424,16 @@ class UMAP():
 
         # Document type colors
         colors = {
-            'leopard': 'yellow',
+            'leopard': 'orange',
             'penguin': 'black',
-            'polar bear': 'grey',
-            'beetle': 'orange'
+            'polar bear': 'pink',
+            'beetle': 'purple'
         }
 
         # Create a color map for the entire dataset
         color_map = []
         for i in range(len(vectors)):
-            doc_type = self.id_document_type(i)
+            doc_type = self.get_row_type(i)
             color_map.append(colors[doc_type])
 
         # Plot the provided questions
